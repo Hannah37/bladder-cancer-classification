@@ -183,8 +183,11 @@ import tensorflow as tf
 def result(one_pred, y_test):
   acc, rec, pre = [], [], []
   
+  """total Accuracy"""
+  total_acc = K.sum(one_pred[:,:] * y_test[:,:])/y_test.shape[0]
+
   for target_class in range(y_test.shape[1]):
-    """RECALL"""
+    """RECALL per class"""
 
     tp = K.sum(one_pred[:, target_class] * y_test[:, target_class])  #dtype=float32
     tpfn = tf.cast(K.sum(y_test[:, target_class]), tf.float32)  #uint8 to float32
@@ -192,14 +195,14 @@ def result(one_pred, y_test):
     # Recall =  (True Positive) / (True Positive + False Negative)
     recall = tp / (tpfn + K.epsilon())
 
-    """PRECISION"""
+    """PRECISION per class"""
 
     tpfp = tf.cast(K.sum(one_pred[:, target_class]), tf.float32)
 
     # Precision = (True Positive) / (True Positive + False Positive)
     precision = tp / (tpfp + K.epsilon())
 
-    """Accuracy"""
+    """Accuracy per class"""
     tn = np.sum((one_pred[:, target_class]==0) * (y_test[:, target_class]==0).T)
 
     accuracy = (tp + tn)/(tpfn + tpfp - tp + tn)
@@ -217,7 +220,7 @@ def result(one_pred, y_test):
     tf.print("Recall = {:.3f}".format(recall))
     tf.print("Precision = {:.3f} ".format(precision))
 
-  return acc, rec, pre
+  return acc, rec, pre, total_acc
 
 """# **Neural Networks**"""
 
@@ -234,7 +237,6 @@ from keras.callbacks import EarlyStopping
 # EarlyStopping = EarlyStopping(monitor='val_loss', patience=20)
 
 for (x_train, x_test, y_train, y_test) in zip(x_train_list, x_test_list, y_train_list, y_test_list):
-
   model = Sequential()
 
   model.add(Dense(y_train.shape[1], input_shape=(len(features),), activation='softmax'))
@@ -249,14 +251,17 @@ for (x_train, x_test, y_train, y_test) in zip(x_train_list, x_test_list, y_train
 
   hist = model.fit(x_train, y_train, validation_data=(x_test, y_test), epochs=500, verbose=0)
 
-  plt.figure(figsize=(12,8))
-  plt.plot(hist.history['loss'])
-  plt.plot(hist.history['val_loss'])
-  plt.plot(hist.history['accuracy'])
-  plt.plot(hist.history['val_accuracy'])
-  plt.legend(['loss','val_loss', 'acc','val_acc'])
-  plt.grid()
-  plt.show()
+  # plt.figure(figsize=(12,8))
+  # plt.plot(hist.history['loss'])
+  # plt.plot(hist.history['val_loss'])
+  # plt.plot(hist.history['accuracy'])
+  # plt.plot(hist.history['val_accuracy'])
+  # plt.legend(['loss','val_loss', 'acc','val_acc'])
+  # plt.grid()
+  # plt.show()
+
+  loss, accuracy = model.evaluate(x_test, y_test)
+  print("Accuracy = {:.3f}".format(accuracy))
 
   prediction = model.predict(x_test, verbose=1)
   one_pred = np.zeros_like(prediction)
@@ -264,20 +269,36 @@ for (x_train, x_test, y_train, y_test) in zip(x_train_list, x_test_list, y_train
   one_pred[np.arange(len(prediction)), prediction.argmax(1)] = 1
   one_pred_list.append(one_pred)
 
-# import tensorflow as tf
-# tf.test.gpu_device_name()
-
-# for one_pred, y_test in zip(one_pred_list, y_test_list):
-#   print(one_pred.shape)
-#   print(y_test.shape)
-
-acc_list, rec_list, pre_list = [], [], []
+acc_list, rec_list, pre_list, total_acc_list = [], [], [], []
 
 for one_pred, y_test in zip(one_pred_list, y_test_list):
-  acc, rec, pre = result(one_pred, y_test)
+  acc, rec, pre, total_acc = result(one_pred, y_test)
   acc_list.append(acc)
   rec_list.append(rec)
   pre_list.append(pre)
+  total_acc_list.append(total_acc)
+
+# total accuracy
+total_acc_list
+
+tf.print("Total Accuracy = {:.3f}".format(K.sum(total_acc_list)/len(total_acc_list)))
+
+# decode one hot vector
+y_pred = np.argmax(one_pred, axis=1).reshape(-1, 1)
+# y_pred
+
+from sklearn import metrics
+
+for one_pred, y_test in zip(one_pred_list, y_test_list):
+  
+  dec_y_pred = np.argmax(one_pred, axis=1).reshape(-1, 1)
+  dec_y_test = np.argmax(y_test, axis=1).reshape(-1, 1)
+
+  # Print the confusion matrix
+  # print(metrics.confusion_matrix(dec_y_test, dec_y_pred))
+
+  # Print the precision and recall, among other metrics
+  print(metrics.classification_report(dec_y_test, dec_y_pred, digits=3))
 
 # number of class
 for i in range(y_test_list[0].shape[1]):
@@ -303,7 +324,7 @@ len(acc_list)
 
 """# **SVM**"""
 
-acc_list, rec_list, pre_list = [], [], []
+acc_list, rec_list, pre_list, total_acc_list = [], [], [], []
 
 # Support Vector Classifier
 # one vs rest
@@ -321,10 +342,13 @@ for x_train, decoded_y_train, x_test, y_test in zip(x_train_list, decoded_y_trai
   Y = encoder.fit_transform(y_pred_svc)
   y_pred_svc = pd.get_dummies(Y).values.astype(np.float32)
 
-  acc, rec, pre = result(y_pred_svc, y_test)
+  acc, rec, pre, total_acc = result(y_pred_svc, y_test)
   acc_list.append(acc)
   rec_list.append(rec)
   pre_list.append(pre)
+  total_acc_list.append(total_acc)
+
+tf.print("Total Accuracy = {:.3f}".format(K.sum(total_acc_list)/len(total_acc_list)))
 
 # number of class
 for i in range(y_test_list[0].shape[1]):
@@ -351,4 +375,3 @@ for i in range(y_test_list[0].shape[1]):
 # new_column = [0] * y_pred_svc.shape[0]
 # y_pred_svc = np.insert(y_pred_svc, 2, new_column, axis=1)
 # y_pred_svc
-
